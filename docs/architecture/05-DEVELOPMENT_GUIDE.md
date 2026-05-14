@@ -316,10 +316,10 @@ The product service (`src/modules/products/service.ts`) runs in two modes contro
 | **API mode** | Non-empty URL | Reads from ERP via `GET /api/ecommerce/products` |
 | **DB mode** (default) | Empty | Reads via Prisma from shared DB (`product_ecommerce` → `products` → `product_media`) |
 
-All product queries (`getProducts`, `getRecentProducts`, `getRelatedProducts`, `getProductBySlug`) wrap the API call in try/catch. If the ERP is unreachable, returns a non-2xx status, or throws any error, the function **silently falls through to DB mode**. This guarantees the storefront works even when the ERP is down or misconfigured.
+All 5 product queries wrap the API call in try/catch. If the ERP is unreachable, returns a non-2xx status, or throws any error, the function **silently falls through to DB mode**. This guarantees the storefront works even when the ERP is down or misconfigured.
 
 ```typescript
-// Pattern used by all 4 product functions
+// Pattern used by all 5 product functions
 if (USE_API) {
   try {
     const data = await getProductsApi(/* ... */);
@@ -329,6 +329,26 @@ if (USE_API) {
   }
 }
 ```
+
+### DB mode inner fallback
+
+Within DB mode, there's a second level of fallback. When the Prisma query against `product_ecommerce` (mapped as `ecommerce_products`) succeeds but returns **0 results** (e.g., the table exists but has no records for a given category), the function does NOT stop — it continues to the legacy `products` table:
+
+```typescript
+return cached(cacheKey, 60, async () => {
+  try {
+    const [rows, total] = await db.ecommerce_products.findMany(/* ... */);
+    if (total > 0) return { products: rows.map(fromDbEcommerce), total };
+  } catch {
+    // ecommerce_products unavailable — fall through to legacy
+  }
+  // Legacy fallback: products table (always has data)
+  const [rows, total] = await db.products.findMany(/* ... */);
+  return { products: rows.map(fromDb), total };
+});
+```
+
+This handles the case where `product_ecommerce` exists in the database schema but hasn't been populated for all categories yet.
 
 **Important:** On Vercel, if `ECOMMERCE_API_URL` is set but points to the storefront's own URL, every API call returns 404 because `/api/ecommerce/products` only exists in the ERP project. The fallback handles this gracefully, but the correct fix is to either:
 - Point `ECOMMERCE_API_URL` to the actual ERP deployment URL, or

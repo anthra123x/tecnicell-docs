@@ -368,6 +368,52 @@ This handles the case where `product_ecommerce` exists in the database schema bu
 
 ---
 
+## Design System & UI
+
+### Brand Colors
+
+The storefront uses a vibrant blue brand color defined in `src/app/globals.css` via CSS custom properties (oklch color space):
+
+| Token | Light | Dark | Usage |
+|-------|-------|------|-------|
+| `--primary` | `oklch(0.52 0.18 255)` | `oklch(0.62 0.18 255)` | Buttons, links, active nav, focus rings |
+| `--primary-foreground` | `oklch(0.985 0 0)` | `oklch(0.145 0 0)` | Text on primary backgrounds |
+| `--accent` | `oklch(0.93 0.06 255)` | `oklch(0.3 0.08 255)` | Subtle brand-tinted accents |
+| `--ring` | `oklch(0.52 0.18 255 / 0.4)` | `oklch(0.62 0.18 255 / 0.4)` | Focus rings |
+
+To change the brand color, update these variables in both `:root` and `.dark` blocks.
+
+### Key UI Components & Patterns
+
+| Component | Location | Details |
+|-----------|----------|---------|
+| **Hero** | `src/components/store/hero.tsx` | Dark background with brand-colored gradient orbs, animated pulse dot, gradient text |
+| **Header** | `src/components/store/header.tsx` | Sticky with scroll shadow, active nav link in brand color with dot indicator, backdrop blur |
+| **Product Card** | `src/components/store/product-card.tsx` | Lift effect on hover (`-translate-y-0.5`), brand-colored shadow, name turns primary on hover |
+| **Skeleton** | `src/components/ui/skeleton.tsx` | Shimmer gradient animation (replaces basic pulse) |
+| **Button** | `src/components/ui/button.tsx` | 6 variants, press effect (`translate-y-px` on active) |
+
+### Animation Tokens
+
+Defined in `globals.css` and usable via Tailwind:
+
+- `--transition-fast`: 150ms ease-out (hover states)
+- `--transition-base`: 200ms ease-out (navigation, drawers)
+- `animate-shimmer`: 2s linear shimmer sweep (skeleton loading)
+
+### View Transitions
+
+Page-to-page navigation uses CSS View Transitions (Chromium 111+, Firefox 144+, Safari 18.2+):
+
+```css
+::view-transition-old(root) { animation-name: fade-out; }
+::view-transition-new(root) { animation-name: fade-in; }
+```
+
+Respects `prefers-reduced-motion` — all animations disable when the user prefers reduced motion.
+
+---
+
 ## Code Quality
 
 ### TypeScript

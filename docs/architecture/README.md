@@ -43,10 +43,10 @@ Read in this order:
 1. **`Product.stock` is the single source of truth** — No stock field in ecommerce tables
 2. **`price` in API = `ecommercePrice ?? salePrice`** — Storefront must not re-implement this
 3. **No shared Prisma Client** — Each project defines its own Prisma schema
-4. **Storefront never writes to DB directly** — All mutations through API
-5. **Enums are UPPERCASE in schema** — Legacy lowercase data exists in DB
-6. **Stock decrement happens ONLY on `PENDING → CONFIRMED`** — Not on order creation
-7. **API endpoints are public** — No auth on any `/api/*` route
+4. **Storefront writes orders directly** — The storefront writes `orders` and `order_items` via its local API. It NEVER writes to `products.stock` or `product_ecommerce`.
+6. **Enums are UPPERCASE in schema** — Legacy lowercase data exists in DB
+7. **Stock decrement happens ONLY on `PENDING → CONFIRMED`** — Not on order creation
+8. **API endpoints are public** — No auth on any `/api/*` route
 
 ---
 
@@ -65,7 +65,7 @@ inventario-tecnicell/     ← ERP project
 │   ├── app/ecommerce/    ← Admin pages
 │   └── modules/          ← Server actions
 
-tecnicell-store/          ← Storefront project
+tienda_online_tecnicell/   ← Storefront project
 ├── docs/ → tecnicell-docs ← Git submodule
 └── src/                  ← Storefront pages/components
 ```
@@ -117,13 +117,17 @@ Se verificó:
 
 Verificado: endpoint retorna 200 con `{ order }`, página renderiza status badge y lista de productos.
 
-### ⏭️ Tarea 1 (pendiente): Modo API
+### ✅ Tarea 1: Modo API
 
-El ERP en `https://tecnicell.vercel.app` no respondió (404). Cuando esté disponible, configurar:
+**Estado:** El ERP ya está deployado en `https://tecnicell.vercel.app`. Para conmutar la tienda a modo API:
+
 ```env
 ECOMMERCE_API_URL="https://tecnicell.vercel.app"
 ```
-Esto activará el modo API sin necesidad de los modelos Prisma directos.
+
+Esto activa `getProductsApi()` en `src/modules/products/service.ts` que llama a `GET /api/ecommerce/products` del ERP. El modo DB directa implementado en la Tarea 2 queda como respaldo automático si el API no responde.
+
+**Recomendación:** Probar localmente primero con `ECOMMERCE_API_URL="http://localhost:3000"` (ERP corriendo local).
 
 ---
 

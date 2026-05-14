@@ -30,18 +30,21 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
-### Storefront Project (`tecnicell-store`)
+### Storefront Project (`tienda_online_tecnicell`)
 
 ```env
-# Database (read-only access recommended)
-DATABASE_URL="postgresql://readonly:password@localhost:5432/tecnicell"
-DIRECT_URL="postgresql://readonly:password@localhost:5432/tecnicell"
+# Database (shared Supabase)
+DATABASE_URL="postgresql://postgres:password@db.supabase.co:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres:password@db.supabase.co:5432/postgres"
 
-# API Base URL (ERP production or local tunnel)
-NEXT_PUBLIC_API_URL="http://localhost:3000/api"
+# ERP API URL — set to use ERP endpoints instead of local DB mode
+# When empty, the storefront reads from the shared DB directly via Prisma
+ECOMMERCE_API_URL="https://tecnicell.vercel.app"
 
 # App
-NEXT_PUBLIC_APP_URL="http://localhost:3001"
+NEXT_PUBLIC_URL="http://localhost:3001"
+NEXT_PUBLIC_WHATSAPP_PHONE="573001234567"
+WHATSAPP_PHONE="573001234567"
 ```
 
 ---
@@ -52,7 +55,7 @@ NEXT_PUBLIC_APP_URL="http://localhost:3001"
 
 ```bash
 git clone https://github.com/anthra123x/inventario-tecnicell.git
-git clone https://github.com/anthra123x/tecnicell-store.git
+git clone https://github.com/anthra123x/tienda_online_tecnicell.git
 ```
 
 ### 2. Clone documentation (into each project)
@@ -92,7 +95,7 @@ cd inventario-tecnicell
 npm run dev
 
 # Terminal 2 — Storefront (port 3001)
-cd tecnicell-store
+cd tienda_online_tecnicell
 npm run dev
 ```
 
@@ -287,7 +290,9 @@ vercel --prod
 ```
 
 Environment variables:
-- `NEXT_PUBLIC_API_URL` → ERP production URL
+- `DATABASE_URL`, `DIRECT_URL` — Shared Supabase DB
+- `ECOMMERCE_API_URL` → ERP production URL (e.g., `https://tecnicell.vercel.app`)
+- `NEXT_PUBLIC_URL` → Storefront URL
 
 ---
 

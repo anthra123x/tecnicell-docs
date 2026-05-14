@@ -31,7 +31,7 @@ Tecnicell is a mobile repair shop management system evolving into a full ERP/bac
 
 | Attribute | Value |
 |-----------|-------|
-| Repo | `anthra123x/tecnicell-store` |
+| Repo | `anthra123x/tienda_online_tecnicell` |
 | Stack | Next.js 16, App Router, Tailwind v4, shadcn/ui |
 | Role | **Public-facing** online store — product catalog, cart, checkout, order tracking |
 | Auth | None (public) |
@@ -71,10 +71,14 @@ Tecnicell is a mobile repair shop management system evolving into a full ERP/bac
 │                       │     │                          │
 │  ▪ Reads/Writes all   │     │  ▪ Reads products via    │
 │    tables             │     │    GET /api/ecommerce/*  │
-│  ▪ Manages catalog    │     │  ▪ Creates orders via    │
-│  ▪ Processes orders   │     │    POST /api/orders      │
-│  ▪ POS, repairs, etc  │     │  ▪ Tracks orders via     │
-│                       │     │    GET /api/orders/[id]  │
+│  ▪ Manages catalog    │     │    (ERP) or direct DB    │
+│  ▪ Processes orders   │     │  ▪ Creates orders via    │
+│  ▪ POS, repairs, etc  │     │    POST /api/orders      │
+│                       │     │    (local or ERP)       │
+│  API endpoints:       │     │  ▪ Tracks orders via     │
+│  GET /api/ecommerce/* │     │    GET /api/orders/[id]  │
+│  POST /api/orders     │     │    (local or ERP)       │
+│  GET /api/orders/[id] │     │                          │
 └───────────────────────┘     └──────────────────────────┘
 ```
 
@@ -84,14 +88,14 @@ Tecnicell is a mobile repair shop management system evolving into a full ERP/bac
 
 | Pattern | Direction | Protocol |
 |---------|-----------|----------|
-| Product catalog read | Storefront → DB | HTTP API or direct DB read |
-| Order creation | Storefront → ERP | `POST /api/orders` (HTTP) |
-| Order tracking | Storefront → DB | `GET /api/orders/[id]` (HTTP) |
+| Product catalog read | Storefront → DB | HTTP API (ERP) or direct DB read (local) |
+| Order creation | Storefront → DB | `POST /api/orders` (local Prisma) or ERP API |
+| Order tracking | Storefront → DB | `GET /api/orders/[id]` (local Prisma) or ERP API |
 | Stock updates | ERP → DB | Prisma writes (internal) |
 | Catalog management | ERP → DB | Prisma writes (internal) |
 | Order processing | ERP → DB | Prisma writes (internal) |
 
-**Key constraint:** The storefront NEVER writes directly to the database. All mutations happen through the ERP API.
+**Key constraint:** The storefront can write orders to the shared DB directly via its own API endpoints. Stock mutations are EXCLUSIVE to the ERP — the storefront never touches `products.stock`.
 
 ---
 
@@ -99,15 +103,15 @@ Tecnicell is a mobile repair shop management system evolving into a full ERP/bac
 
 | Capability | Owner | Storefront Access |
 |------------|-------|-------------------|
-| Product base data (name, stock, salePrice) | ERP (Inventory module) | Read via API |
-| Ecommerce settings (price, images, badges) | ERP (Ecommerce module) | Read via API |
-| Product images | ERP (Ecommerce module) | Read via API |
-| Order creation | Storefront | Write via `POST /api/orders` |
-| Order processing (status changes) | ERP (Orders module) | Read tracking via API |
-| Order cancellation | Both (via status update) | None (ERP handles) |
-| Stock management | ERP (Inventory + Orders + Sales + Repairs) | None (read-only) |
+| Product base data (name, stock, salePrice) | ERP (Inventory module) | Read via ERP API or direct DB |
+| Ecommerce settings (price, images, badges) | ERP (Ecommerce module) | Read via ERP API or direct DB |
+| Product images | ERP (Ecommerce module) | Read via ERP API or direct DB |
+| Order creation | Storefront (local) + ERP (admin) | Write via local `POST /api/orders` or ERP API |
+| Order processing (status changes) | ERP (Orders module) | Read tracking via local API or ERP API |
+| Order cancellation | ERP (via status update) | ERP handles; storefront reads result |
+| Stock management | ERP (Inventory + Orders + Sales + Repairs) | None (read-only) — never write |
 | Cart | Storefront (client-side) | 100% frontend |
-| Checkout | Storefront → API | Submit via API |
+| Checkout | Storefront → local API | Submit via local `POST /api/orders` |
 | Payment | Storefront (future) | Future |
 
 ---
@@ -133,10 +137,11 @@ Tecnicell is a mobile repair shop management system evolving into a full ERP/bac
 1. **Stock is 1:1** — `Product.stock` is the single source of truth. The storefront has NO stock field.
 2. **Price is decoupled** — `ecommercePrice` can differ from `salePrice`. The API returns `price` which falls back automatically.
 3. **No shared Prisma Client** — Each project defines its own Prisma schema. Shared tables are mapped via `@@map()`.
-4. **Storefront is public** — All `/api/ecommerce/*` and `/api/orders/*` endpoints have NO authentication.
-5. **Enums are UPPERCASE** — DB has legacy lowercase data; any direct query must normalize.
-6. **Cascade deletes** — Deleting `EcommerceProduct` cascades to `ProductMedia`. Deleting `Product` cascades to `EcommerceProduct`.
-7. **Soft deletes** — `Product.deletedAt` and `Client.deletedAt` are used instead of hard deletes. API queries always filter `deletedAt: null`.
+4. **Storefront can write orders** — The storefront writes `orders` and `order_items` via its local `POST /api/orders`. It NEVER writes to `products.stock` or `product_ecommerce`.
+5. **Storefront is public** — All `/api/ecommerce/*` and `/api/orders/*` endpoints have NO authentication.
+6. **Enums are UPPERCASE** — DB has legacy lowercase data; any direct query must normalize.
+7. **Cascade deletes** — Deleting `EcommerceProduct` cascades to `ProductMedia`. Deleting `Product` cascades to `EcommerceProduct`.
+8. **Soft deletes** — `Product.deletedAt` and `Client.deletedAt` are used instead of hard deletes. API queries always filter `deletedAt: null`.
 
 ---
 

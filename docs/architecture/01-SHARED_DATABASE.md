@@ -4,7 +4,12 @@
 
 Both projects share a single PostgreSQL database hosted on Supabase. Each project maintains its own Prisma schema file — they must NOT share a Prisma Client.
 
-Tables are divided into two categories: **shared** (both projects can read, only ERP writes) and **ERP-internal** (only ERP accesses).
+Tables are divided into two categories: **shared** (both projects read/write according to their responsibilities) and **ERP-internal** (only ERP accesses).
+
+**Write rules:**
+- ERP writes to ALL tables (products, orders, ecommerce, sales, repairs, etc.)
+- Storefront writes ONLY to `orders` and `order_items` (via its local `POST /api/orders`)
+- Storefront NEVER writes to `products`, `product_ecommerce`, or `product_media`
 
 ---
 
@@ -19,7 +24,7 @@ Both projects use the same credentials. Environment variables are documented in 
 
 ---
 
-## Shared Tables (Read for Storefront, Read/Write for ERP)
+## Shared Tables (Both Projects)
 
 ### `products` (Prisma: `Product`)
 
@@ -120,6 +125,26 @@ Both projects use the same credentials. Environment variables are documented in 
 | `total` | DOUBLE PRECISION | `quantity * unit_price` |
 
 **Index:** `order_id`
+
+---
+
+### Storefront Prisma Models
+
+The storefront defines its own Prisma models for these shared tables (for direct DB reads/writes):
+
+| Table | Storefront Model | Notes |
+|-------|-----------------|-------|
+| `products` | `products` | Read-only, maps via `@@map("products")` |
+| `product_ecommerce` | `ecommerce_products` | Read-only, maps via `@@map("product_ecommerce")` |
+| `product_media` | `product_media` | Read-only, maps via `@@map("product_media")` |
+| `orders` | `orders` | Read/Write, maps via `@@map("orders")` |
+| `order_items` | `order_items` | Read/Write, maps via `@@map("order_items")` |
+
+The storefront also has its own analytics table (not shared with ERP):
+
+| Table | Storefront Model | Purpose |
+|-------|-----------------|---------|
+| `product_views` | `product_views` | Product page view tracking (storefront analytics) |
 
 ---
 

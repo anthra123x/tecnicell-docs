@@ -82,84 +82,48 @@ tecnicell-store/          ← Storefront project
 
 ---
 
-## Tareas Pendientes — Storefront Agent
+## Tareas Completadas — Storefront Agent ✅
 
-> Lee la documentación en el orden del Quick Start antes de ejecutar estas tareas. El catálogo online del ERP ya está listo. El storefront debe consumirlo.
+> Última ejecución: 2026-05-14. El ERP `https://tecnicell.vercel.app` no estaba disponible (404). Se implementó la alternativa (Tarea 2) con modelos Prisma directos sobre las tablas compartidas. Build y verificación local exitosos. Build: TypeScript clean, 11/11 rutas optimizadas.
 
-### Tarea 1: Configurar modo API
+### ✅ Tarea 2 (alternativa): Modelos ecommerce en Prisma
 
-El storefront tiene dos modos de obtener productos. Actualmente corre en **modo DB directa** (muestra todos los productos de la tabla `products` sin filtrar por visibilidad ecommerce).
+**Implementado** en `prisma/schema.prisma` y `src/modules/products/service.ts`.
 
-**Qué hacer:**
+Modelos agregados (`snake_case` por convención de tablas nuevas):
+- `ecommerce_products` → `product_ecommerce` — ecommercePrice, slug, badges, tags, visible, showStock, etc.
+- `product_media` → `product_media` — url, alt, isPrimary, sortOrder, relacionado a ecommerce_products
 
+El servicio (`service.ts`) ahora opera en modo **dual con 3 rutas**:
+1. `USE_API=true` → llama `GET /api/ecommerce/products` del ERP
+2. `USE_API=false` → hace JOIN con `ecommerce_products + products + product_media` (filtra `visible=true`, `stock>0`, `deletedAt IS NULL`)
+3. **Fallback legacy**: si la tabla `product_ecommerce` no existe, cae al `fromDb()` original sobre `products`
+
+Los productos ahora muestran: slugs reales, imágenes, `ecommercePrice ?? salePrice`, badges, shortDescription.
+
+### ✅ Tarea 3: Catálogo verificado
+
+Se verificó:
+- Solo productos con `visible=true` y `stock>0` aparecen (1 producto: `cabezote-iphone-tipo-c-2cx4tn`)
+- Producto sin `EcommerceProduct` o con `visible=false` NO aparece
+- Imagen e info de ecommerce se renderizan correctamente
+
+### ✅ Tarea 4: Tracking de pedidos
+
+**Implementado** `GET /api/orders/[id]` en `src/app/api/orders/[id]/route.ts` con:
+- Búsqueda por `id` o `externalReference`
+- Response con contrato completo: clientEmail, clientCity, items, subtotal, shipping, etc.
+- Página `/order/[id]` funciona en DB mode (status "Pendiente", cliente, items)
+
+Verificado: endpoint retorna 200 con `{ order }`, página renderiza status badge y lista de productos.
+
+### ⏭️ Tarea 1 (pendiente): Modo API
+
+El ERP en `https://tecnicell.vercel.app` no respondió (404). Cuando esté disponible, configurar:
 ```env
-# En tu .env, agrega:
 ECOMMERCE_API_URL="https://tecnicell.vercel.app"
 ```
-
-Esto activa el modo API en `src/modules/products/service.ts`:
-
-```
-Modo DB directa (actual)              Modo API (target)
-┌─────────────────────┐               ┌──────────────────────┐
-│ products table       │               │ GET /api/ecommerce/  │
-│ (todos los productos)│      →        │  products            │
-│ Sin imágenes         │               │ (solo visibles,     │
-│ Sin badges           │               │  con imágenes,      │
-│ Sin ecommercePrice   │               │  badges, precios)   │
-│ Sin slug             │               │  Con slug y metadatos│
-└─────────────────────┘               └──────────────────────┘
-```
-
-### Tarea 2 (alternativa): Agregar modelos ecommerce a Prisma
-
-Si no puedes usar el modo API, agrega estos modelos a `prisma/schema.prisma`:
-
-```prisma
-model ecommerce_products {
-  id               String   @id
-  productId        String   @unique @map("product_id")
-  ecommercePrice   Float?   @map("ecommerce_price")
-  compareAtPrice   Float?   @map("compare_at_price")
-  visible          Boolean  @default(true)
-  slug             String?  @unique
-  shortDescription String?  @map("short_description")
-  badges           String[]
-  showStock        Boolean  @default(true) @map("show_stock")
-  featured         Boolean  @default(false)
-  media            product_media[]
-  @@map("product_ecommerce")
-}
-
-model product_media {
-  id          String  @id
-  ecommerceId String  @map("ecommerce_id")
-  url         String
-  alt         String?
-  isPrimary   Boolean @default(false) @map("is_primary")
-  sortOrder   Int     @default(0) @map("sort_order")
-  ecommerce   ecommerce_products @relation(fields: [ecommerceId], references: [id])
-  @@map("product_media")
-}
-```
-
-Luego modifica `getProducts()` en `src/modules/products/service.ts` para:
-- Hacer join con `ecommerce_products`
-- Filtrar `visible = true`
-- Usar `ecommercePrice ?? salePrice` como `price`
-- Incluir `media` (solo `isPrimary = true`) para la imagen
-- Incluir `badges`, `tags`, `shortDescription`, `slug`
-
-### Tarea 3: Verificar el catálogo
-
-1. En el ERP, agrega un producto al catálogo online (Catálogo Online → Agregar producto)
-2. Asígnale imagen, precio ecommerce, badges
-3. Verifica que aparezca en el storefront
-4. Verifica que los productos SIN `EcommerceProduct` o con `visible = false` NO aparezcan
-
-### Tarea 4: Verificar tracking de pedidos
-
-`GET /api/orders/[id]` ya existe en el ERP. Con `ECOMMERCE_API_URL` configurado, la página `src/app/(store)/order/[id]/page.tsx` debe funcionar automáticamente.
+Esto activará el modo API sin necesidad de los modelos Prisma directos.
 
 ---
 

@@ -39,7 +39,10 @@ DIRECT_URL="postgresql://postgres:password@db.supabase.co:5432/postgres"
 
 # ERP API URL — set to use ERP endpoints instead of local DB mode
 # When empty, the storefront reads from the shared DB directly via Prisma
-ECOMMERCE_API_URL="https://tecnicell.vercel.app"
+# WARNING: This must point to the ERP's deployment URL (e.g. https://inventario-tecnicell.vercel.app),
+# NOT to the storefront itself. Pointing it to the storefront URL will cause 404s on
+# /api/ecommerce/products/* because those routes only exist in the ERP project.
+ECOMMERCE_API_URL=""
 
 # App
 NEXT_PUBLIC_URL="http://localhost:3001"
@@ -250,6 +253,16 @@ The DB has legacy orders with `status = 'preparing'` instead of `'PREPARING'`. I
 UPDATE orders SET status = UPPER(status) WHERE status != UPPER(status);
 ```
 
+### Product page returns 404 in Vercel but works locally
+
+**Root cause:** `ECOMMERCE_API_URL` is set on Vercel but points to the storefront's own URL (or another URL that doesn't have `/api/ecommerce/products/[slug]`). The storefront tries the API first, gets 404, and in `getProductBySlug` returns `null`, which triggers `notFound()` on the product detail page.
+
+**Fix:** Either:
+1. Set `ECOMMERCE_API_URL` to the actual ERP URL (where `GET /api/ecommerce/products/[slug]` exists)
+2. Or delete/empty `ECOMMERCE_API_URL` in Vercel env to force DB-only mode
+
+> All product functions now fall through to DB when the API fails, but `getProductBySlug` was the last one fixed — make sure the deployed commit includes `fae8ed0` or later.
+
 ### Submodule detached HEAD
 
 If `cd docs && git status` shows "detached HEAD", the submodule is pinned to a specific commit. To work on docs:
@@ -291,8 +304,35 @@ vercel --prod
 
 Environment variables:
 - `DATABASE_URL`, `DIRECT_URL` — Shared Supabase DB
-- `ECOMMERCE_API_URL` → ERP production URL (e.g., `https://tecnicell.vercel.app`)
+- `ECOMMERCE_API_URL` → ERP production URL (leave empty to use DB-only mode)
 - `NEXT_PUBLIC_URL` → Storefront URL
+
+### Dual-mode fallback behavior
+
+The product service (`src/modules/products/service.ts`) runs in two modes controlled by `ECOMMERCE_API_URL`:
+
+| Mode | `ECOMMERCE_API_URL` | Data source |
+|------|---------------------|-------------|
+| **API mode** | Non-empty URL | Reads from ERP via `GET /api/ecommerce/products` |
+| **DB mode** (default) | Empty | Reads via Prisma from shared DB (`product_ecommerce` → `products` → `product_media`) |
+
+All product queries (`getProducts`, `getRecentProducts`, `getRelatedProducts`, `getProductBySlug`) wrap the API call in try/catch. If the ERP is unreachable, returns a non-2xx status, or throws any error, the function **silently falls through to DB mode**. This guarantees the storefront works even when the ERP is down or misconfigured.
+
+```typescript
+// Pattern used by all 4 product functions
+if (USE_API) {
+  try {
+    const data = await getProductsApi(/* ... */);
+    return data.products.map(fromApi);
+  } catch {
+    // API unavailable — fall through to DB mode
+  }
+}
+```
+
+**Important:** On Vercel, if `ECOMMERCE_API_URL` is set but points to the storefront's own URL, every API call returns 404 because `/api/ecommerce/products` only exists in the ERP project. The fallback handles this gracefully, but the correct fix is to either:
+- Point `ECOMMERCE_API_URL` to the actual ERP deployment URL, or
+- Leave it empty to use DB-only mode (requires Prisma schema with `product_ecommerce` view)
 
 ---
 

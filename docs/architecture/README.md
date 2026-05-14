@@ -82,6 +82,87 @@ tecnicell-store/          ← Storefront project
 
 ---
 
+## Tareas Pendientes — Storefront Agent
+
+> Lee la documentación en el orden del Quick Start antes de ejecutar estas tareas. El catálogo online del ERP ya está listo. El storefront debe consumirlo.
+
+### Tarea 1: Configurar modo API
+
+El storefront tiene dos modos de obtener productos. Actualmente corre en **modo DB directa** (muestra todos los productos de la tabla `products` sin filtrar por visibilidad ecommerce).
+
+**Qué hacer:**
+
+```env
+# En tu .env, agrega:
+ECOMMERCE_API_URL="https://tecnicell.vercel.app"
+```
+
+Esto activa el modo API en `src/modules/products/service.ts`:
+
+```
+Modo DB directa (actual)              Modo API (target)
+┌─────────────────────┐               ┌──────────────────────┐
+│ products table       │               │ GET /api/ecommerce/  │
+│ (todos los productos)│      →        │  products            │
+│ Sin imágenes         │               │ (solo visibles,     │
+│ Sin badges           │               │  con imágenes,      │
+│ Sin ecommercePrice   │               │  badges, precios)   │
+│ Sin slug             │               │  Con slug y metadatos│
+└─────────────────────┘               └──────────────────────┘
+```
+
+### Tarea 2 (alternativa): Agregar modelos ecommerce a Prisma
+
+Si no puedes usar el modo API, agrega estos modelos a `prisma/schema.prisma`:
+
+```prisma
+model ecommerce_products {
+  id               String   @id
+  productId        String   @unique @map("product_id")
+  ecommercePrice   Float?   @map("ecommerce_price")
+  compareAtPrice   Float?   @map("compare_at_price")
+  visible          Boolean  @default(true)
+  slug             String?  @unique
+  shortDescription String?  @map("short_description")
+  badges           String[]
+  showStock        Boolean  @default(true) @map("show_stock")
+  featured         Boolean  @default(false)
+  media            product_media[]
+  @@map("product_ecommerce")
+}
+
+model product_media {
+  id          String  @id
+  ecommerceId String  @map("ecommerce_id")
+  url         String
+  alt         String?
+  isPrimary   Boolean @default(false) @map("is_primary")
+  sortOrder   Int     @default(0) @map("sort_order")
+  ecommerce   ecommerce_products @relation(fields: [ecommerceId], references: [id])
+  @@map("product_media")
+}
+```
+
+Luego modifica `getProducts()` en `src/modules/products/service.ts` para:
+- Hacer join con `ecommerce_products`
+- Filtrar `visible = true`
+- Usar `ecommercePrice ?? salePrice` como `price`
+- Incluir `media` (solo `isPrimary = true`) para la imagen
+- Incluir `badges`, `tags`, `shortDescription`, `slug`
+
+### Tarea 3: Verificar el catálogo
+
+1. En el ERP, agrega un producto al catálogo online (Catálogo Online → Agregar producto)
+2. Asígnale imagen, precio ecommerce, badges
+3. Verifica que aparezca en el storefront
+4. Verifica que los productos SIN `EcommerceProduct` o con `visible = false` NO aparezcan
+
+### Tarea 4: Verificar tracking de pedidos
+
+`GET /api/orders/[id]` ya existe en el ERP. Con `ECOMMERCE_API_URL` configurado, la página `src/app/(store)/order/[id]/page.tsx` debe funcionar automáticamente.
+
+---
+
 ## Index by Topic
 
 | Topic | Document |

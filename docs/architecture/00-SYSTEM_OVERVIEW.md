@@ -1,0 +1,151 @@
+# System Overview — Tecnicell ERP ↔ Storefront
+
+## What is Tecnicell?
+
+Tecnicell is a mobile repair shop management system evolving into a full ERP/backoffice with an integrated online store. It consists of **two independent Next.js projects** sharing a single PostgreSQL database.
+
+---
+
+## Projects
+
+### Project A: Tecnicell ERP (Backoffice)
+
+| Attribute | Value |
+|-----------|-------|
+| Repo | `anthra123x/inventario-tecnicell` |
+| Stack | Next.js 16, App Router, Prisma 5, PostgreSQL (Supabase), shadcn/ui, Tailwind v4 |
+| Role | **Source of truth** for products, stock, orders, sales, repairs, clients, inventory |
+| Auth | Supabase Auth (session-based) |
+| Deployment | Vercel |
+
+**Modules:**
+- Inventory management (products, stock movements)
+- POS Sales (point of sale)
+- Repair management (diagnosis, parts, tracking)
+- Order management (online orders lifecycle)
+- Client registry
+- Reports & analytics
+- Ecommerce admin panel (product catalog, images, pricing, badges)
+
+### Project B: Tecnicell Storefront (Online Store)
+
+| Attribute | Value |
+|-----------|-------|
+| Repo | `anthra123x/tecnicell-store` |
+| Stack | Next.js 16, App Router, Tailwind v4, shadcn/ui |
+| Role | **Public-facing** online store — product catalog, cart, checkout, order tracking |
+| Auth | None (public) |
+| Deployment | Vercel |
+
+---
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Shared PostgreSQL Database                  │
+│                                                              │
+│  ┌──────────┐  ┌─────────────────┐  ┌──────────┐            │
+│  │ products │  │ product_ecommerce│  │ orders   │            │
+│  │ (stock)  │◄→│ (prices, badges) │  │ (status) │            │
+│  └──────────┘  └─────────┬───────┘  └──────────┘            │
+│                          │                                    │
+│                   ┌──────┴──────┐                             │
+│                   │product_media│                             │
+│                   │ (images)    │                             │
+│                   └─────────────┘                             │
+│                                                              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐ │
+│  │ clients  │  │ sales    │  │ repairs  │  │ inventory_   │ │
+│  │          │  │ sale_items│  │ repair_  │  │ movements   │ │
+│  │          │  │          │  │ parts    │  │              │ │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────────┘ │
+│              ↑ Internal ERP tables (not shared)              │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+            ┌──────────────┴──────────────┐
+            │                              │
+┌───────────▼──────────┐     ┌────────────▼───────────┐
+│   Tecnicell ERP       │     │  Tecnicell Storefront   │
+│   (Backoffice)        │     │  (Online Store)         │
+│                       │     │                          │
+│  ▪ Reads/Writes all   │     │  ▪ Reads products via    │
+│    tables             │     │    GET /api/ecommerce/*  │
+│  ▪ Manages catalog    │     │  ▪ Creates orders via    │
+│  ▪ Processes orders   │     │    POST /api/orders      │
+│  ▪ POS, repairs, etc  │     │  ▪ Tracks orders via     │
+│                       │     │    GET /api/orders/[id]  │
+└───────────────────────┘     └──────────────────────────┘
+```
+
+---
+
+## Communication Patterns
+
+| Pattern | Direction | Protocol |
+|---------|-----------|----------|
+| Product catalog read | Storefront → DB | HTTP API or direct DB read |
+| Order creation | Storefront → ERP | `POST /api/orders` (HTTP) |
+| Order tracking | Storefront → DB | `GET /api/orders/[id]` (HTTP) |
+| Stock updates | ERP → DB | Prisma writes (internal) |
+| Catalog management | ERP → DB | Prisma writes (internal) |
+| Order processing | ERP → DB | Prisma writes (internal) |
+
+**Key constraint:** The storefront NEVER writes directly to the database. All mutations happen through the ERP API.
+
+---
+
+## Responsibilities Matrix
+
+| Capability | Owner | Storefront Access |
+|------------|-------|-------------------|
+| Product base data (name, stock, salePrice) | ERP (Inventory module) | Read via API |
+| Ecommerce settings (price, images, badges) | ERP (Ecommerce module) | Read via API |
+| Product images | ERP (Ecommerce module) | Read via API |
+| Order creation | Storefront | Write via `POST /api/orders` |
+| Order processing (status changes) | ERP (Orders module) | Read tracking via API |
+| Order cancellation | Both (via status update) | None (ERP handles) |
+| Stock management | ERP (Inventory + Orders + Sales + Repairs) | None (read-only) |
+| Cart | Storefront (client-side) | 100% frontend |
+| Checkout | Storefront → API | Submit via API |
+| Payment | Storefront (future) | Future |
+
+---
+
+## Tech Stack (both projects)
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript (strict mode) |
+| Database | PostgreSQL (Supabase) |
+| ORM | Prisma 5 |
+| CSS | Tailwind CSS v4 |
+| UI Library | shadcn/ui |
+| Auth (ERP) | Supabase Auth (SSR) |
+| Validation | Zod |
+| Deployment | Vercel |
+
+---
+
+## Key Constraints
+
+1. **Stock is 1:1** — `Product.stock` is the single source of truth. The storefront has NO stock field.
+2. **Price is decoupled** — `ecommercePrice` can differ from `salePrice`. The API returns `price` which falls back automatically.
+3. **No shared Prisma Client** — Each project defines its own Prisma schema. Shared tables are mapped via `@@map()`.
+4. **Storefront is public** — All `/api/ecommerce/*` and `/api/orders/*` endpoints have NO authentication.
+5. **Enums are UPPERCASE** — DB has legacy lowercase data; any direct query must normalize.
+6. **Cascade deletes** — Deleting `EcommerceProduct` cascades to `ProductMedia`. Deleting `Product` cascades to `EcommerceProduct`.
+7. **Soft deletes** — `Product.deletedAt` and `Client.deletedAt` are used instead of hard deletes. API queries always filter `deletedAt: null`.
+
+---
+
+## Current Architecture Risks
+
+| Risk | Severity | Description |
+|------|----------|-------------|
+| Stock reservation window | High | `POST /api/orders` checks stock but does NOT reserve it. Stock is decremented only when `PENDING→CONFIRMED`. Between creation and confirmation, another order could oversell. |
+| Trigger conflicts | High | A PostgreSQL trigger `trigger_product_ecommerce_updated_at` on `product_ecommerce` may conflict with Prisma's `@updatedAt` directive on writes. |
+| Naming convention split | Medium | Old tables use camelCase columns, new ecommerce tables use snake_case. Raw SQL queries must account for this. |
+| Two catalog endpoints | Low | `GET /api/products?ecommerce=true` is legacy and duplicates `GET /api/ecommerce/products`. The storefront should only use the latter. |
+| No API rate limiting | Low | All API endpoints are public with no throttling. |

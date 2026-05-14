@@ -253,6 +253,18 @@ The DB has legacy orders with `status = 'preparing'` instead of `'PREPARING'`. I
 UPDATE orders SET status = UPPER(status) WHERE status != UPPER(status);
 ```
 
+### Product list shows "0 products" on Vercel after deploying fixes
+
+**Root cause:** `unstable_cache` cached empty results from the old buggy code. Even with the fix deployed, the stale cached response (0 products from the old `ecommerce_products` query) is served instead of re-executing.
+
+**Solutions:**
+1. **Automatic** (already applied) — Cache keys now include a version prefix (`CACHE_VERSION = "v2"` in `src/modules/products/service.ts`). Bump this constant to bust all caches on next deploy.
+2. **Manual** — Call the revalidation endpoint (requires `REVALIDATE_SECRET` env var):
+   ```
+   POST /api/revalidate?secret=<SECRET>&tag=products
+   ```
+3. **Wait** — The cache expires after the `revalidate` TTL (60s for product lists, 120s for details).
+
 ### Product page returns 404 in Vercel but works locally
 
 **Root cause:** `ECOMMERCE_API_URL` is set on Vercel but points to the storefront's own URL (or another URL that doesn't have `/api/ecommerce/products/[slug]`). The storefront tries the API first, gets 404, and in `getProductBySlug` returns `null`, which triggers `notFound()` on the product detail page.

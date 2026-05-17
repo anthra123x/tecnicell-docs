@@ -133,6 +133,22 @@ Esto activa `getProductsApi()` en `src/modules/products/service.ts` que llama a 
 
 ## Changelog — Cambios Recientes
 
+### 2026-05-16 — Fix: NEXT_REDIRECT en formularios de creación
+
+**Problema:** Al crear productos en inventario aparecía error `NEXT_REDIRECT` en el toast, aunque el producto sí se guardaba correctamente.
+
+**Causa raíz:** Las server actions en `inventory/new/page.tsx` y `sales/new/page.tsx` llamaban `redirect()` después de crear el registro. `redirect()` lanza una excepción interna (`NEXT_REDIRECT`) que Next.js maneja automáticamente en `<form action={serverAction}>`, pero al ser llamadas **programáticamente** desde client components via `await onSubmit()`, la excepción propagaba como promesa rechazada al cliente, siendo capturada por `try/catch`.
+
+**Fix:** Se eliminó `redirect()` de las server actions. La navegación ahora se maneja desde el cliente con `router.push(redirectTo)` después del success toast. Mismo patrón ya probado en `repairs/new/page.tsx`.
+
+**Archivos modificados (ERP):**
+- `src/app/inventory/new/page.tsx` — server action retorna `createProduct()` sin redirect
+- `src/app/sales/new/page.tsx` — server action retorna `createSale()` sin redirect
+- `src/components/forms/product-form.tsx` — agregado `redirectTo` prop + `router.push()`
+- `src/components/forms/sale-form.tsx` — agregado `redirectTo` prop + `router.push()` + `try/catch`
+
+**Lugares vulnerables identificados:** Solo los 2 corregidos. `repairs/new/` ya usaba el patrón correcto. `auth/actions.ts` y Server Components puros no se ven afectados.
+
 ### 2026-05-16 — Badge warning para stock bajo
 
 **Problema:** Productos con stock bajo (stock > 0 pero <= minStock) se marcaban con el mismo color gris secundario que no era distinguible visualmente.

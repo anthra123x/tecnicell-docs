@@ -133,16 +133,102 @@ Esto activa `getProductsApi()` en `src/modules/products/service.ts` que llama a 
 
 ## Changelog — Cambios Recientes
 
-### 2026-05-16 — Fix: Límite de productos en formulario de ventas
+### 2026-05-16 — Badge warning para stock bajo
 
-**Problema:** El catálogo de productos en `SaleForm` (ventas) solo cargaba los primeros 100 productos del inventario. Con 339 productos activos, 239 quedaban invisibles al facturar una venta.
+**Problema:** Productos con stock bajo (stock > 0 pero <= minStock) se marcaban con el mismo color gris secundario que no era distinguible visualmente.
 
-**Causa raíz:** `src/components/forms/sale-form.tsx:81` — `getProducts(undefined, undefined, 1, 100)`
+**Fix:** Nuevo variant `warning` en el componente `Badge` (bg-warning/15 + text-warning), aplicado al estado "Stock Bajo" en inventario.
 
-**Fix:** `getProducts(undefined, undefined, 1, 1000)` — aumenta el límite para cubrir el volumen actual y crecimiento futuro.
+**Archivos:** `src/components/ui/badge.tsx`, `src/app/inventory/page.tsx` (ERP)
+**Commit:** `9692eab`
 
-**Archivo:** `src/components/forms/sale-form.tsx` (ERP)
-**Commit:** `edf2927`
+### 2026-05-16 — Stock breakdown global en inventario y reportes
+
+**Problema:** Las tarjetas de resumen en inventario (En Stock, Stock Bajo, Agotados) solo contaban los 20 productos visibles en la página actual. El reporte de inventario no mostraba el desglose completo.
+
+**Fix:** Nueva server action `getInventoryStockBreakdown()` que cuenta sobre TODOS los productos. Reporte de inventario ahora muestra En Stock/Stock Bajo/Agotados con colores.
+
+**Archivos:** `src/modules/inventory/inventory.actions.ts`, `src/app/inventory/page.tsx`, `src/app/reports/page.tsx`, `src/modules/reports/reports.actions.ts` (ERP)
+**Commit:** `a16e77b`
+
+### 2026-05-16 — FASE 1: Exportaciones funcionando
+
+**Problemas:**
+- Reportes: botón "Exportar Excel" era un placeholder (toast "en desarrollo")
+- Server actions de exportación sin filtro `deletedAt: null` (soft-delete incluido)
+- Botones sin loading state (usuario sin feedback)
+- Filenames sin timestamp único (sobrescritura en mismo día)
+- `serverActions.bodySizeLimit` de 2MB insuficiente para backups grandes
+
+**Fixes:**
+- Reportes exportan Excel real con XLSX por tipo de reporte
+- Filtros `deletedAt: null` en exportProductsToExcel y exportClientsToExcel
+- Loading states en admin (exportExcelLoading, backupLoading) y reportes (exportLoading)
+- Timestamps con segundos en filenames
+- bodySizeLimit: 2mb → 10mb
+
+**Archivos:** `src/app/reports/page.tsx`, `src/app/admin/page.tsx`, `src/modules/export/export.actions.ts`, `next.config.ts` (ERP)
+**Commits:** `38a4aca`, `c7e0d58`
+
+### 2026-05-16 — FASE 2: Integridad y seguridad
+
+**Problemas críticos corregidos:**
+
+1. **Auth: Sin guards de autorización** — Cualquier usuario podía crear admins, cambiar roles, eliminar usuarios.
+   - **Fix:** `requireAdmin()` en getUsers, updateUserRole, deleteUser, createUserByAdmin
+   - **Archivo:** `src/modules/auth/auth.actions.ts`
+
+2. **Auth: Usuario Supabase huérfano** — Si fallaba creación en DB, el auth user quedaba sin registro.
+   - **Fix:** Orden invertido: crear Prisma User primero, luego Supabase auth. Rollback en fallo.
+
+3. **Orders: Stock phantom en PENDING→CANCELLED** — Cancelar pedido PENDING incrementaba stock nunca debitado.
+   - **Fix:** Solo restaurar si el status previo estaba en CONFIRMED/PREPARING/SHIPPED/DELIVERED
+
+4. **Orders: Transiciones de estado inválidas** — DELIVERED→PENDING era posible.
+   - **Fix:** Máquina de estados `ALLOWED_TRANSITIONS` para los 6 estados
+
+5. **Orders: Sin re-check de stock al confirmar** — PENDING→CONFIRMED debitaba sin verificar stock actual.
+   - **Fix:** `findUnique` con select:stock dentro de la transacción antes de decrementar
+
+6. **Dashboard: Ventas del Mes = histórico total** — `getSalesStats()` se llamaba sin filtro de fecha.
+   - **Fix:** Pasar `startOfMonth` y `now()` como argumentos
+
+7. **Dashboard: Categorías infladas** — `getProductsByCategory()` sin `deletedAt: null`.
+   - **Fix:** Agregado `where: { deletedAt: null }` al groupBy
+
+8. **Dashboard: Stat "Productos en Stock" incorrecto** — Mostraba lowStock count (capped a 10).
+   - **Fix:** Renombrado a "Stock Bajo" con valor correcto
+
+9. **Clients: Conteos inflados** — `getClientStats()`, `getClients()`, `getClientById()` sin `deletedAt: null`.
+   - **Fix:** Agregado filtro a las 3 funciones
+
+10. **Settings: Race condition + sin auth** — findFirst+create podía duplicar filas.
+    - **Fix:** Helper `getOrCreateSettings` + `requireAdmin()`
+
+11. **Settings: Sin validación Zod** — Datos sin sanitizar.
+    - **Fix:** `UpdateSettingsSchema` con validación de tipos, email, rangos
+
+**Archivo:** múltiples server actions (ERP)
+**Commit:** `38a4aca`
+
+### 2026-05-16 — FASE 3: Riesgos restantes y performance
+
+1. **Middleware: Cookies perdidas en redirect** — Session refresh no persistía al redirigir.
+   - **Fix:** API `getAll/setAll` + `applyCookies()` que copia cookies a la response final
+
+2. **Error boundaries** — 8 rutas sin fallback UI (white screen en producción).
+   - **Fix:** `error.tsx` en dashboard, inventory, sales, repairs, reports, orders, admin, ecommerce
+
+3. **Prisma indexes** — Queries lentas en tablas grandes.
+   - **Fix:** Nuevos índices en SaleItem(productId), RepairPart(productId, repairId), OrderItem(productId)
+
+4. **Dashboard: Query huérfana** — `getDailySales(30)` llamado pero nunca usado.
+   - **Fix:** Eliminado del Promise.all y return de getDashboardStats()
+
+5. **Settings: Validación Zod** — Implementado UpdateSettingsSchema con coerce, enum, rangos.
+
+**Archivos:** middleware, error.tsx × 8, schema.prisma, dashboard.actions, settings.actions (ERP)
+**Commit:** `c7e0d58`
 
 ---
 

@@ -131,6 +131,21 @@ Esto activa `getProductsApi()` en `src/modules/products/service.ts` que llama a 
 
 ---
 
+## Changelog — Cambios Recientes
+
+### 2026-05-16 — Fix: Límite de productos en formulario de ventas
+
+**Problema:** El catálogo de productos en `SaleForm` (ventas) solo cargaba los primeros 100 productos del inventario. Con 339 productos activos, 239 quedaban invisibles al facturar una venta.
+
+**Causa raíz:** `src/components/forms/sale-form.tsx:81` — `getProducts(undefined, undefined, 1, 100)`
+
+**Fix:** `getProducts(undefined, undefined, 1, 1000)` — aumenta el límite para cubrir el volumen actual y crecimiento futuro.
+
+**Archivo:** `src/components/forms/sale-form.tsx` (ERP)
+**Commit:** `edf2927`
+
+---
+
 ## Index by Topic
 
 | Topic | Document |

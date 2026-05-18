@@ -227,6 +227,47 @@ Esto activa `getProductsApi()` en `src/modules/products/service.ts` que llama a 
 **Archivo:** múltiples server actions (ERP)
 **Commit:** `38a4aca`
 
+### 2026-05-17 — Setup local + FASE 4: Estabilidad y middleware
+
+**Setup en equipo nuevo:**
+- Instalación de dependencias y config de Vercel CLI
+- Recuperación de `.env` con credenciales reales de Supabase via Vercel
+- Vinculación del proyecto `inventario-tecnicell-mvg1` en Vercel
+- Eliminación de 5 proyectos duplicados de Vercel (`inventario-tecnicell`, `inventario-tecnicell-nuevo`, etc.)
+- Aplicación de migraciones Prisma a BD Supabase
+
+**1. Middleware → Proxy (Next.js 16)**
+- `middleware.ts` estaba deprecado en Next.js 16.2.3
+- Migrado a `proxy.ts` con función renombrada a `proxy()`
+- `config.matcher` sin cambios
+- **Archivo:** `src/middleware.ts` → `src/proxy.ts`
+
+**2. Error boundaries faltantes**
+- Agregados `error.tsx` en 5 rutas sin fallback UI
+- **Archivos nuevos:** `login/error.tsx`, `register/error.tsx`, `profile/error.tsx`, `print/error.tsx`, `auth/logout/error.tsx`
+
+**3. Loading states en dashboard**
+- Agregados `loading.tsx` con Skeleton en 10 rutas principales
+- **Archivos nuevos:** `dashboard/loading.tsx`, `inventory/loading.tsx`, `inventory/[id]/loading.tsx`, `sales/loading.tsx`, `sales/[id]/loading.tsx`, `repairs/loading.tsx`, `repairs/[id]/loading.tsx`, `orders/loading.tsx`, `orders/[id]/loading.tsx`, `ecommerce/loading.tsx`, `ecommerce/products/loading.tsx`, `reports/loading.tsx`, `admin/loading.tsx`
+
+**4. Bugfix: Query inválida en reports (lowStock)**
+- `reports.actions.ts:126` usaba `prisma.product.fields.minStock` que no existe en runtime
+- **Fix:** Filtro post-query con `products.filter(p => p.stock <= p.minStock)`
+- **Archivo:** `src/modules/reports/reports.actions.ts`
+
+**5. Bugfix: Hard delete en clients**
+- `clients.actions.ts:180` usaba `prisma.client.delete()` (hard delete)
+- Contradecía la política de soft-delete documentada
+- **Fix:** Cambiado a `prisma.client.update({ data: { deletedAt: new Date() } })`
+- **Archivo:** `src/modules/clients/clients.actions.ts`
+
+**6. Lint: Missing deps en useEffect**
+- 10 componentes con efectos que no incluían la función de carga en el dependency array
+- **Fix:** Funciones movidas dentro del efecto o `eslint-disable-next-line` cuando eran referenciadas externamente
+- Sin `react-hooks/exhaustive-deps` warnings restantes
+
+**Archivos del ERP involucrados:** proxy.ts, reports.actions.ts, clients.actions.ts, sales, orders, repairs, inventory, ecommerce pages, error/loading components
+
 ### 2026-05-16 — FASE 3: Riesgos restantes y performance
 
 1. **Middleware: Cookies perdidas en redirect** — Session refresh no persistía al redirigir.

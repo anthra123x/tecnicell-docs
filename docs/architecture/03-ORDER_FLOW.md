@@ -60,7 +60,7 @@ await tx.product.update({
 ```
 
 - This is executed inside a `prisma.$transaction()` with the status update
-- If any product has insufficient stock, the transaction **still proceeds** (stock can go negative)
+- If any product has insufficient stock, the transaction **throws an error** and rolls back (stock re-check before decrement)
 
 ### `ANY → CANCELLED` (Stock Restore)
 
@@ -74,11 +74,9 @@ await tx.product.update({
 // Creates InventoryMovement with type ENTRY, reason "Cancelacion pedido #[id]"
 ```
 
-- Stock is restored regardless of current status
-- If the order was already `CONFIRMED` (stock was decremented), cancel restores it correctly
-- If the order was still `PENDING` (stock was never decremented), cancel still **increments** stock — this is a potential over-restore bug
-
-> ⚠️ **Bug risk:** Cancelling a `PENDING` order incorrectly increments stock. The code does NOT check if the order was previously confirmed before restoring stock.
+- Stock is restored ONLY if the previous status had stock decremented (CONFIRMED/PREPARING/SHIPPED/DELIVERED)
+- If the order was still `PENDING` (stock was never decremented), cancel is a no-op (no stock restore)
+- This is guarded by `STATUS_WITH_STOCK_DECREMENTED` check
 
 ---
 
@@ -153,7 +151,7 @@ This function:
 5. If `CANCELLED`: restores stock, creates ENTRY inventory movements
 6. Returns `{ success: true }` or `{ error: "..." }`
 
-**There is NO validation that prevents illegal transitions** (e.g., going from `PENDING` directly to `DELIVERED`, or trying to confirm an already-confirmed order). The code trusts the admin UI to enforce valid transitions.
+Transitions are validated via `ALLOWED_TRANSITIONS` in `orders.actions.ts`. Illegal transitions return an error message.
 
 ---
 
@@ -161,9 +159,9 @@ This function:
 
 | Scenario | Behavior | Correctness |
 |----------|----------|-------------|
-| Insufficient stock at confirmation | Stock goes negative | ❌ Should reject confirmation |
-| Cancel PENDING order | Stock incremented (over-restore) | ❌ Should be no-op |
-| Cancel already-cancelled order | Stock incremented again (double restore) | ❌ Should be no-op |
+| Insufficient stock at confirmation | Transaction throws, rolls back | ✅ Fixed — stock re-check before decrement |
+| Cancel PENDING order | Stock NOT incremented (guarded check) | ✅ Fixed — `STATUS_WITH_STOCK_DECREMENTED` |
+| Cancel already-cancelled order | Stock NOT incremented (guard previene) | ✅ Fixed — mismo guard |
 | Duplicate externalReference | 409 at creation | ✅ Correct |
 | Product deleted after order created | FK constraint prevents product deletion | ✅ Safe |
 | Order with 0 items | Zod validation rejects (min 1) | ✅ Correct |

@@ -227,6 +227,23 @@ Esto activa `getProductsApi()` en `src/modules/products/service.ts` que llama a 
 **Archivo:** múltiples server actions (ERP)
 **Commit:** `38a4aca`
 
+### 2026-05-19 — FASE 5: Selección de repuestos con búsqueda
+
+**Contexto:** El formulario de reparaciones usaba un `<Select>` con scroll para elegir repuestos.
+Con 1000+ productos era impractico y lento. Solo mostraba productos `REPAIR_PART`.
+
+**Cambios en repairs/new y repairs/[id]/edit:**
+1. **Sin filtro de categoría** — `ProductCategory.REPAIR_PART` eliminado, ahora se muestran todos los productos del inventario
+2. **Límite 100 → 1000** — para cubrir inventarios grandes
+3. **Select reemplazado por buscador + resultados** — Input de texto filtra productos client-side (instantáneo)
+4. **Resultados con badges de stock** — 0 stock = rojo, ≤3 = warning, normal = default
+5. **Productos ya agregados se deshabilitan** — no se puede agregar el mismo producto dos veces
+6. **Tabla de repuestos seleccionados** — columnas: Producto, Costo unit., Cant., Subtotal, Eliminar
+7. **Al hacer clic en un producto se agrega y se limpia la búsqueda**
+8. **Import sin uso de `ProductCategory` eliminado**
+
+**Archivos (2):** `src/app/repairs/new/page.tsx`, `src/app/repairs/[id]/edit/page.tsx`
+
 ### 2026-05-17 — Setup local + FASE 4: Estabilidad y middleware
 
 **Setup en equipo nuevo:**
